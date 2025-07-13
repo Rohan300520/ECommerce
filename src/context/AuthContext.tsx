@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User } from '../types';
 import { getCurrentUser, signOut as authSignOut } from '../lib/auth';
-import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -41,16 +40,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     refreshUser().finally(() => setLoading(false));
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        await refreshUser();
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
   }, []);
 
   return (

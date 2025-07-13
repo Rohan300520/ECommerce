@@ -12,8 +12,13 @@
   "dependencies": {
     "@hookform/resolvers": "^5.1.1",
     "@supabase/supabase-js": "^2.50.5",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/react-router-dom": "^5.3.3",
     "@types/socket.io-client": "^3.0.0",
+    "@types/uuid": "^10.0.0",
+    "bcryptjs": "^3.0.2",
+    "better-sqlite3": "^12.2.0",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
@@ -23,6 +28,7 @@
     "react-router-dom": "^7.6.3",
     "recharts": "^3.1.0",
     "socket.io-client": "^4.8.1",
+    "uuid": "^11.1.0",
     "zod": "^4.0.5"
   },
   "devDependencies": {

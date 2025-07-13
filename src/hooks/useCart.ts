@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { CartItem, Product } from '../types';
-import { supabase } from '../lib/supabase';
+import { CartItem } from '../types';
+import { getCartItems, addToCart as apiAddToCart, updateCartItemQuantity, removeFromCart as apiRemoveFromCart, clearCart as apiClearCart } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -17,16 +17,8 @@ export const useCart = () => {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('cart_items')
-        .select(`
-          *,
-          product:products(*)
-        `)
-        .eq('user_id', user.id);
-
-      if (error) throw error;
-      setItems(data || []);
+      const cartItems = await getCartItems(user.id);
+      setItems(cartItems);
     } catch (error) {
       console.error('Error fetching cart items:', error);
       toast.error('Failed to load cart items');
@@ -42,30 +34,7 @@ export const useCart = () => {
     }
 
     try {
-      // Check if item already exists in cart
-      const existingItem = items.find(item => item.product_id === productId);
-
-      if (existingItem) {
-        // Update quantity
-        const { error } = await supabase
-          .from('cart_items')
-          .update({ quantity: existingItem.quantity + quantity })
-          .eq('id', existingItem.id);
-
-        if (error) throw error;
-      } else {
-        // Add new item
-        const { error } = await supabase
-          .from('cart_items')
-          .insert({
-            user_id: user.id,
-            product_id: productId,
-            quantity,
-          });
-
-        if (error) throw error;
-      }
-
+      await apiAddToCart(user.id, productId, quantity);
       await fetchCartItems();
       toast.success('Added to cart');
     } catch (error) {
@@ -75,18 +44,8 @@ export const useCart = () => {
   };
 
   const updateQuantity = async (itemId: string, quantity: number) => {
-    if (quantity <= 0) {
-      await removeFromCart(itemId);
-      return;
-    }
-
     try {
-      const { error } = await supabase
-        .from('cart_items')
-        .update({ quantity })
-        .eq('id', itemId);
-
-      if (error) throw error;
+      await updateCartItemQuantity(itemId, quantity);
       await fetchCartItems();
     } catch (error) {
       console.error('Error updating quantity:', error);
@@ -96,12 +55,7 @@ export const useCart = () => {
 
   const removeFromCart = async (itemId: string) => {
     try {
-      const { error } = await supabase
-        .from('cart_items')
-        .delete()
-        .eq('id', itemId);
-
-      if (error) throw error;
+      await apiRemoveFromCart(itemId);
       await fetchCartItems();
       toast.success('Removed from cart');
     } catch (error) {
@@ -114,12 +68,7 @@ export const useCart = () => {
     if (!user) return;
 
     try {
-      const { error } = await supabase
-        .from('cart_items')
-        .delete()
-        .eq('user_id', user.id);
-
-      if (error) throw error;
+      await apiClearCart(user.id);
       setItems([]);
     } catch (error) {
       console.error('Error clearing cart:', error);

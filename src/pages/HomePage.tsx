@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, TrendingUp, Star, Users } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { getProducts } from '../lib/api';
 import { Product } from '../types';
 import ProductCard from '../components/Products/ProductCard';
 
@@ -11,18 +11,8 @@ const HomePage: React.FC = () => {
 
   const fetchFeaturedProducts = async () => {
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .select(`
-          *,
-          seller:profiles(full_name)
-        `)
-        .eq('is_approved', true)
-        .order('average_rating', { ascending: false })
-        .limit(8);
-
-      if (error) throw error;
-      setFeaturedProducts(data || []);
+      const products = await getProducts({ sortBy: 'rating' });
+      setFeaturedProducts(products.slice(0, 8));
     } catch (error) {
       console.error('Error fetching featured products:', error);
     } finally {
@@ -62,7 +52,7 @@ const HomePage: React.FC = () => {
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Link>
               <Link
-                to="/seller/signup"
+                to="/signup"
                 className="border-2 border-white text-white px-8 py-3 rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition-colors"
               >
                 Become a Seller
