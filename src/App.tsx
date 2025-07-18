@@ -2,7 +2,6 @@ import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
-import { initializeDatabase, seedDatabase } from './lib/database';
 import Layout from './components/Layout/Layout';
 import HomePage from './pages/HomePage';
 import ProductsPage from './pages/ProductsPage';
@@ -11,16 +10,6 @@ import LoginPage from './pages/auth/LoginPage';
 import SignUpPage from './pages/auth/SignUpPage';
 
 function App() {
-  useEffect(() => {
-    // Initialize database on app start
-    try {
-      initializeDatabase();
-      seedDatabase();
-    } catch (error) {
-      console.error('Failed to initialize database:', error);
-    }
-  }, []);
-
   return (
     <AuthProvider>
       <Router>

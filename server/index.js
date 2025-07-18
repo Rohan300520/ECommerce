@@ -1,17 +1,29 @@
-import Database from 'better-sqlite3';
-import bcrypt from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
-import path from 'path';
+const express = require('express');
+const cors = require('cors');
+const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
+const Database = require('better-sqlite3');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
 
 // Initialize SQLite database
-const dbPath = path.join(process.cwd(), 'ecommerce.db');
-export const db = new Database(dbPath);
+const dbPath = path.join(__dirname, 'ecommerce.db');
+const db = new Database(dbPath);
 
 // Enable foreign keys
 db.pragma('foreign_keys = ON');
 
-// Create tables
-export const initializeDatabase = () => {
+// Session storage (in production, use proper session management)
+let currentUser = null;
+
+// Initialize database tables
+const initializeDatabase = () => {
   // Users table
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -137,17 +149,14 @@ export const initializeDatabase = () => {
 };
 
 // Seed dummy data
-export const seedDatabase = () => {
+const seedDatabase = () => {
   try {
-    // Clear existing data
-    db.exec('DELETE FROM notifications');
-    db.exec('DELETE FROM reviews');
-    db.exec('DELETE FROM order_items');
-    db.exec('DELETE FROM orders');
-    db.exec('DELETE FROM cart_items');
-    db.exec('DELETE FROM products');
-    db.exec('DELETE FROM categories');
-    db.exec('DELETE FROM users');
+    // Check if data already exists
+    const existingUsers = db.prepare('SELECT COUNT(*) as count FROM users').get();
+    if (existingUsers.count > 0) {
+      console.log('Database already seeded');
+      return;
+    }
 
     // Create dummy users
     const users = [
@@ -187,27 +196,8 @@ export const seedDatabase = () => {
     const sellerId = users[1].id;
     const customerId = users[2].id;
 
-    // Create categories
-    const categories = [
-      { id: uuidv4(), name: 'Electronics', slug: 'electronics' },
-      { id: uuidv4(), name: 'Clothing', slug: 'clothing' },
-      { id: uuidv4(), name: 'Home & Garden', slug: 'home-garden' },
-      { id: uuidv4(), name: 'Books', slug: 'books' },
-      { id: uuidv4(), name: 'Sports & Fitness', slug: 'sports-fitness' }
-    ];
-
-    const insertCategory = db.prepare(`
-      INSERT INTO categories (id, name, slug)
-      VALUES (?, ?, ?)
-    `);
-
-    categories.forEach(category => {
-      insertCategory.run(category.id, category.name, category.slug);
-    });
-
     // Create sample products
     const products = [
-      // Electronics
       {
         id: uuidv4(),
         name: 'Wireless Bluetooth Headphones',
@@ -247,7 +237,6 @@ export const seedDatabase = () => {
         average_rating: 4.0,
         review_count: 15
       },
-      // Clothing
       {
         id: uuidv4(),
         name: 'Premium Cotton T-Shirt',
@@ -287,7 +276,6 @@ export const seedDatabase = () => {
         average_rating: 4.6,
         review_count: 31
       },
-      // Home & Garden
       {
         id: uuidv4(),
         name: 'Ceramic Plant Pot Set',
@@ -314,7 +302,6 @@ export const seedDatabase = () => {
         average_rating: 4.1,
         review_count: 14
       },
-      // Books
       {
         id: uuidv4(),
         name: 'JavaScript: The Complete Guide',
@@ -341,7 +328,6 @@ export const seedDatabase = () => {
         average_rating: 4.5,
         review_count: 27
       },
-      // Sports & Fitness
       {
         id: uuidv4(),
         name: 'Yoga Mat Premium',
@@ -546,3 +532,323 @@ export const seedDatabase = () => {
     console.error('Error seeding database:', error);
   }
 };
+
+// Initialize database on startup
+initializeDatabase();
+seedDatabase();
+
+// Auth routes
+app.post('/api/auth/signup', async (req, res) => {
+  try {
+    const { email, password, fullName, role = 'customer' } = req.body;
+
+    // Check if user already exists
+    const existingUser = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (existingUser) {
+      return res.status(400).json({ error: 'User already exists with this email' });
+    }
+
+    // Hash password
+    const passwordHash = bcrypt.hashSync(password, 10);
+    const userId = uuidv4();
+
+    // Insert new user
+    const insertUser = db.prepare(`
+      INSERT INTO users (id, email, password_hash, full_name, role)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+
+    insertUser.run(userId, email, passwordHash, fullName, role);
+
+    res.json({ user: { id: userId, email, full_name: fullName, role } });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/signin', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Find user by email
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid email or password' });
+    }
+
+    // Check password
+    const isValidPassword = bcrypt.compareSync(password, user.password_hash);
+    if (!isValidPassword) {
+      return res.status(400).json({ error: 'Invalid email or password' });
+    }
+
+    // Check if user is banned
+    if (user.is_banned) {
+      return res.status(403).json({ error: 'Your account has been banned. Please contact support.' });
+    }
+
+    // Set current user
+    currentUser = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      full_name: user.full_name,
+      avatar_url: user.avatar_url,
+      created_at: user.created_at,
+      is_banned: user.is_banned,
+    };
+
+    res.json({ user: currentUser });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/signout', (req, res) => {
+  currentUser = null;
+  res.json({ success: true });
+});
+
+app.get('/api/auth/user', (req, res) => {
+  res.json({ user: currentUser });
+});
+
+// Products routes
+app.get('/api/products', (req, res) => {
+  try {
+    const { category, search, minPrice, maxPrice, sortBy } = req.query;
+    
+    let query = `
+      SELECT p.*, u.full_name as seller_name
+      FROM products p
+      LEFT JOIN users u ON p.seller_id = u.id
+      WHERE p.is_approved = 1
+    `;
+    const params = [];
+
+    if (category) {
+      query += ' AND p.category = ?';
+      params.push(category);
+    }
+
+    if (search) {
+      query += ' AND (p.name LIKE ? OR p.description LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    if (minPrice) {
+      query += ' AND p.price >= ?';
+      params.push(parseFloat(minPrice));
+    }
+
+    if (maxPrice) {
+      query += ' AND p.price <= ?';
+      params.push(parseFloat(maxPrice));
+    }
+
+    // Add sorting
+    switch (sortBy) {
+      case 'price_asc':
+        query += ' ORDER BY p.price ASC';
+        break;
+      case 'price_desc':
+        query += ' ORDER BY p.price DESC';
+        break;
+      case 'rating':
+        query += ' ORDER BY p.average_rating DESC';
+        break;
+      case 'newest':
+        query += ' ORDER BY p.created_at DESC';
+        break;
+      default:
+        query += ' ORDER BY p.created_at DESC';
+    }
+
+    const products = db.prepare(query).all(...params);
+    const result = products.map(p => ({
+      ...p,
+      seller: p.seller_name ? { full_name: p.seller_name } : undefined
+    }));
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/products/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const product = db.prepare(`
+      SELECT p.*, u.full_name as seller_name
+      FROM products p
+      LEFT JOIN users u ON p.seller_id = u.id
+      WHERE p.id = ?
+    `).get(id);
+
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const result = {
+      ...product,
+      seller: product.seller_name ? { full_name: product.seller_name } : undefined
+    };
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Cart routes
+app.get('/api/cart/:userId', (req, res) => {
+  try {
+    const { userId } = req.params;
+    const items = db.prepare(`
+      SELECT ci.*, p.name, p.price, p.image_url, p.stock_quantity
+      FROM cart_items ci
+      JOIN products p ON ci.product_id = p.id
+      WHERE ci.user_id = ?
+    `).all(userId);
+
+    const result = items.map(item => ({
+      ...item,
+      product: {
+        id: item.product_id,
+        name: item.name,
+        price: item.price,
+        image_url: item.image_url,
+        stock_quantity: item.stock_quantity
+      }
+    }));
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/cart', (req, res) => {
+  try {
+    const { userId, productId, quantity = 1 } = req.body;
+
+    // Check if item already exists
+    const existingItem = db.prepare(`
+      SELECT * FROM cart_items WHERE user_id = ? AND product_id = ?
+    `).get(userId, productId);
+
+    if (existingItem) {
+      // Update quantity
+      db.prepare(`
+        UPDATE cart_items SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND product_id = ?
+      `).run(quantity, userId, productId);
+    } else {
+      // Add new item
+      db.prepare(`
+        INSERT INTO cart_items (id, user_id, product_id, quantity)
+        VALUES (?, ?, ?, ?)
+      `).run(uuidv4(), userId, productId, quantity);
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/cart/:itemId', (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const { quantity } = req.body;
+
+    if (quantity <= 0) {
+      db.prepare('DELETE FROM cart_items WHERE id = ?').run(itemId);
+    } else {
+      db.prepare(`
+        UPDATE cart_items SET quantity = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(quantity, itemId);
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/cart/:itemId', (req, res) => {
+  try {
+    const { itemId } = req.params;
+    db.prepare('DELETE FROM cart_items WHERE id = ?').run(itemId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/cart/user/:userId', (req, res) => {
+  try {
+    const { userId } = req.params;
+    db.prepare('DELETE FROM cart_items WHERE user_id = ?').run(userId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reviews routes
+app.get('/api/products/:productId/reviews', (req, res) => {
+  try {
+    const { productId } = req.params;
+    const reviews = db.prepare(`
+      SELECT r.*, u.full_name as user_name
+      FROM reviews r
+      JOIN users u ON r.user_id = u.id
+      WHERE r.product_id = ?
+      ORDER BY r.created_at DESC
+    `).all(productId);
+
+    const result = reviews.map(review => ({
+      ...review,
+      user: { full_name: review.user_name }
+    }));
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/reviews', (req, res) => {
+  try {
+    const { productId, userId, rating, comment } = req.body;
+    const reviewId = uuidv4();
+
+    db.prepare(`
+      INSERT INTO reviews (id, product_id, user_id, rating, comment)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(reviewId, productId, userId, rating, comment);
+
+    // Update product rating
+    const reviews = db.prepare(`
+      SELECT AVG(rating) as avg_rating, COUNT(*) as count
+      FROM reviews WHERE product_id = ?
+    `).get(productId);
+
+    db.prepare(`
+      UPDATE products SET average_rating = ?, review_count = ?
+      WHERE id = ?
+    `).run(reviews.avg_rating, reviews.count, productId);
+
+    res.json({ id: reviewId });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
