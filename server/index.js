@@ -656,7 +656,7 @@ app.get('/api/products', (req, res) => {
         query += ' ORDER BY p.price DESC';
         break;
       case 'rating':
-        query += ' ORDER BY p.average_rating DESC';
+        query += ' ORDER BY CAST(p.average_rating AS REAL) DESC';
         break;
       case 'newest':
         query += ' ORDER BY p.created_at DESC';
