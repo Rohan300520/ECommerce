@@ -1,6 +1,6 @@
 import { User } from '../types';
 
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = '/api';
 
 export const signUp = async (email: string, password: string, fullName: string, role: string = 'customer') => {
   const response = await fetch(`${API_BASE_URL}/auth/signup`, {
