@@ -560,8 +560,19 @@ app.post('/api/auth/signup', async (req, res) => {
 
     insertUser.run(userId, email, passwordHash, fullName, role);
 
-    res.json({ user: { id: userId, email, full_name: fullName, role } });
+    res.json({ 
+      success: true,
+      user: { 
+        id: userId, 
+        email, 
+        full_name: fullName, 
+        role,
+        created_at: new Date().toISOString(),
+        is_banned: false
+      } 
+    });
   } catch (error) {
+    console.error('Signup error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -599,8 +610,12 @@ app.post('/api/auth/signin', async (req, res) => {
       is_banned: user.is_banned,
     };
 
-    res.json({ user: currentUser });
+    res.json({ 
+      success: true,
+      user: currentUser 
+    });
   } catch (error) {
+    console.error('Signin error:', error);
     res.status(500).json({ error: error.message });
   }
 });
