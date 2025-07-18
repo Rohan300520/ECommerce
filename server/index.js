@@ -834,7 +834,7 @@ app.post('/api/reviews', (req, res) => {
 
     // Update product rating
     const reviews = db.prepare(`
-      SELECT AVG(rating) as avg_rating, COUNT(*) as count
+      SELECT COALESCE(AVG(rating), 0) as avg_rating, COUNT(*) as count
       FROM reviews WHERE product_id = ?
     `).get(productId);
 
